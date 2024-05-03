@@ -14,45 +14,24 @@ from prismatic.models.backbones.llm.base_llm import HFCausalLLMBackbone
 from prismatic.models.backbones.llm.prompting import (
     LLaMa2ChatPromptBuilder,
     PromptBuilder,
-    PurePromptBuilder,
+    Llama3PurePromptBuilder,
     VicunaV15ChatPromptBuilder,
 )
 
 # Registry =>> Support LLaMa-2 Models (from HF Transformers)
 # fmt: off
-LLAMA2_MODELS = {
+LLAMA3_MODELS = {
     # === Pure Meta LLaMa-2 (non-instruct/chat-tuned) Models ===
-    "llama2-7b-pure": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-7b-hf"
+    "llama3-8b-pure": {
+        "llm_family": "llama3", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Meta-Llama-3-8B"
     },
 
-    "llama2-13b-pure": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-13b-hf"
-    },
-
-    # === Meta LLaMa-2 Chat Models ===
-    "llama2-7b-chat": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-7b-chat-hf"
-    },
-
-    "llama2-13b-chat": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-13b-chat-hf"
-    },
-
-    # === Vicuna v1.5 Chat Models ===
-    "vicuna-v15-7b": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "lmsys/vicuna-7b-v1.5"
-    },
-
-    "vicuna-v15-13b": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "lmsys/vicuna-13b-v1.5"
-    },
 
 }
 # fmt: on
 
 
-class LLaMa2LLMBackbone(HFCausalLLMBackbone):
+class LLaMa3LLMBackbone(HFCausalLLMBackbone):
     def __init__(
         self,
         llm_backbone_id: str,
@@ -67,24 +46,25 @@ class LLaMa2LLMBackbone(HFCausalLLMBackbone):
             hf_token=hf_token,
             inference_mode=inference_mode,
             use_flash_attention_2=use_flash_attention_2,
-            **LLAMA2_MODELS[llm_backbone_id],
+            **LLAMA3_MODELS[llm_backbone_id],
         )
 
-        # [Special Case] LLaMa-2 PAD Token Handling --> for clarity, we add an extra token (and resize)
+        # [Special Case] LLaMa-3 PAD Token Handling --> for clarity, we add an extra token (and resize)
         self.tokenizer.add_special_tokens({"pad_token": "<PAD>"})
         self.llm.config.pad_token_id = self.tokenizer.pad_token_id
         self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
 
     @property
     def prompt_builder_fn(self) -> Type[PromptBuilder]:
-        if self.identifier.startswith("llama2-") and self.identifier.endswith("-pure"):
-            return PurePromptBuilder
+        if self.identifier.startswith("llama3-") and self.identifier.endswith("-pure"):
+            return Llama3PurePromptBuilder
 
-        elif self.identifier.startswith("llama2-") and self.identifier.endswith("-chat"):
-            return LLaMa2ChatPromptBuilder
+        # TODO
+        # elif self.identifier.startswith("llama3-") and self.identifier.endswith("-chat"):
+        #     return LLaMa2ChatPromptBuilder
 
-        elif self.identifier.startswith("vicuna"):
-            return VicunaV15ChatPromptBuilder
+        # elif self.identifier.startswith("vicuna"):
+        #     return VicunaV15ChatPromptBuilder
 
         raise ValueError(f"No PromptBuilder defined for LLM Backbone `{self.identifier}`")
 

@@ -41,7 +41,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 # === Constants ===
-BASE_DIR = Path("data/download/llava-v1.5-instruct")
+BASE_DIR = Path("download/llava-v1.5-instruct")
 LRV_DIR = BASE_DIR / "lrv"
 
 VG_JSON_FILES, VG_IMG_DIR = [LRV_DIR / "filter_cap1.json", LRV_DIR / "filter_cap_more1.json"], LRV_DIR / "lrv-vg"
@@ -79,7 +79,7 @@ def build_lrv_instruct() -> None:
     # Iterate through Chart Examples & Verify Image Existence
     for example in tqdm(chart_examples, desc="[*] Verifying all Chart Images in LRV Instruct"):
         image_path = example["image_id"]
-        assert (CHART_IMG_DIR / image_path).exists(), f"Missing Image `{image_path}`"
+        assert (CHART_IMG_DIR / image_path).exists(), f"Missing Image `{image_path}` {CHART_IMG_DIR / image_path}"
 
     # Reformat VG Examples as LLaVa "Chat" Style => List[Entry] where each Entry is a Dictionary:
     #   => "id": str

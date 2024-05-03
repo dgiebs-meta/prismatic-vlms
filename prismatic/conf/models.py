@@ -404,6 +404,13 @@ class Prism_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
     llm_backbone_id: str = "llama2-7b-pure"
     arch_specifier: str = "no-align+fused-gelu-mlp"
 
+@dataclass
+class Prism_7B_DINOSigLIP_Controlled_Llama3(Prism_7B_DINOSigLIP_Controlled):
+    model_id: str = "prism-dinosiglip-controlled+7b+llama3"
+    llm_backbone_id: str = "llama3-8b-pure"
+    finetune_per_device_batch_size: int = 8
+
+
 
 @dataclass
 class Prism_13B_DINOSigLIP_Controlled(Exp_13B_One_Stage):
@@ -499,6 +506,9 @@ class ModelRegistry(Enum):
     PRISM_DINOSIGLIP_CONTROLLED_13B = Prism_13B_DINOSigLIP_Controlled
     PRISM_DINOSIGLIP_7B = Prism_7B_DINOSigLIP
     PRISM_DINOSIGLIP_13B = Prism_13B_DINOSigLIP
+
+    # === Llama3 == #
+    PRISM_DINOSIGLIP_CONTROLLED_7B_LLAMA3 = Prism_7B_DINOSigLIP_Controlled_Llama3
 
     @property
     def model_id(self) -> str:

@@ -145,3 +145,8 @@ dmypy.json
 # Caches and Datasets
 cache/
 data/
+transformers
+runs
+.hf_token
+draft.*
+download

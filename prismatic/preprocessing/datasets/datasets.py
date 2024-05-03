@@ -143,8 +143,8 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
             if isinstance(self.tokenizer, LlamaTokenizerFast):
                 msg = msg.rstrip()
-            else:
-                raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
+            # else:
+            #     raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
 
             # Tokenize Input IDs
             turn_input_ids = self.tokenizer(msg, add_special_tokens=turn_idx == 0).input_ids
