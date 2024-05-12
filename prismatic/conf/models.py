@@ -409,6 +409,9 @@ class Prism_7B_DINOSigLIP_Controlled_Llama3(Prism_7B_DINOSigLIP_Controlled):
     model_id: str = "prism-dinosiglip-controlled+7b+llama3"
     llm_backbone_id: str = "llama3-8b-pure"
     finetune_per_device_batch_size: int = 8
+    finetune_learning_rate: float = 1e-5
+
+
 
 
 
@@ -431,6 +434,12 @@ class Prism_7B_DINOSigLIP(Exp_7B_One_Stage):
     arch_specifier: str = "no-align+fused-gelu-mlp"
     finetune_epochs: int = 2
 
+
+@dataclass
+class Prism_7B_DINOSigLIP_Llama3(Prism_7B_DINOSigLIP):
+    model_id: str = "prism-dinosiglip+7b+llama3"
+    llm_backbone_id: str = "llama3-8b-pure"
+    finetune_per_device_batch_size: int = 8
 
 #   =>> Note :: Run with `--dataset.type "llava-lvis4v-lrv"`
 @dataclass
@@ -509,6 +518,7 @@ class ModelRegistry(Enum):
 
     # === Llama3 == #
     PRISM_DINOSIGLIP_CONTROLLED_7B_LLAMA3 = Prism_7B_DINOSigLIP_Controlled_Llama3
+    PRISM_DINOSIGLIP_7B_LLAMA3 = Prism_7B_DINOSigLIP_Llama3
 
     @property
     def model_id(self) -> str:

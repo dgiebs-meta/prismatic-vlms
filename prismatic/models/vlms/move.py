@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
 from torch.distributed.fsdp.wrap import _module_wrap_policy, _or_policy
 from transformers.modeling_outputs import CausalLMOutputWithPast
@@ -34,7 +36,7 @@ overwatch = initialize_overwatch(__name__)
 IGNORE_INDEX = -100
 
 
-class PrismaticVLM(VLM):
+class MoveVLM(VLM):
     def __init__(
         self,
         model_id: str,
@@ -59,11 +61,18 @@ class PrismaticVLM(VLM):
         if arch_specifier == "linear":
             self.projector = LinearProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
         elif arch_specifier.endswith("fused-gelu-mlp"):
-            self.projector = FusedMLPProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
+            self.projector = self.projector = nn.ModuleList([FusedMLPProjector(1024, llm_backbone.embed_dim),MLPProjector(1152, llm_backbone.embed_dim)])
         elif arch_specifier.endswith("gelu-mlp"):
-            self.projector = MLPProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
+            self.projector = nn.ModuleList([MLPProjector(1024, llm_backbone.embed_dim),MLPProjector(1152, llm_backbone.embed_dim)])
         else:
             raise ValueError(f"PrismaticVLM with `{arch_specifier = }` is not supported!")
+
+        ## monkey patch
+        self.num_experts = 2
+        self.top_k = 1
+        self.expert_names = ["dino","siglip"]
+        self.gate = LinearProjector(llm_backbone.embed_dim,self.num_experts)
+        self.jitter_noise = 0.01
 
         # Trackers
         self.vision_backbone_requires_grad = False
@@ -89,7 +98,7 @@ class PrismaticVLM(VLM):
         llm_backbone: LLMBackbone,
         enable_mixed_precision_training: bool = True,
         arch_specifier: str = "gelu-mlp",
-    ) -> PrismaticVLM:
+    ) -> MoveVLM:
         """Initialize a PrismaticVLM from a pretrained checkpoint, freezing all weights, tailored for inference."""
         vlm = cls(
             model_id,
@@ -252,6 +261,7 @@ class PrismaticVLM(VLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
+        context_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -303,16 +313,8 @@ class PrismaticVLM(VLM):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
-
-        # Run Visual Feature Extraction
-        with torch.set_grad_enabled(self.vision_backbone_requires_grad):
-            if isinstance(pixel_values, dict):
-                patch_features = self.vision_backbone({k: pixel_values[k][multimodal_indices] for k in pixel_values})
-            else:
-                patch_features = self.vision_backbone(pixel_values[multimodal_indices])
-
-        # Projection Logic :: [bsz, num_patches, llm_embed_dim] =>> num_patches = (2 *) (256 + 1) for ViT-L + CLS
-        projected_patch_embeddings = self.projector(patch_features)
+ 
+        projected_patch_embeddings,router_logits = self.mixture_of_visual_experts(context_ids=input_ids,pixel_values=pixel_values)
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -419,6 +421,62 @@ class PrismaticVLM(VLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+
+    # === Mixture-of-Visual-Experts ===
+    def mixture_of_visual_experts(self,context_ids,pixel_values):
+
+        # 1. get context embeds
+        batch_size,_ = context_ids.shape
+        context_embed = self.llm_backbone.embed_input_ids(context_ids)
+        ## TODO: configurable pooling + pad masking
+        context_embed = torch.mean(context_embed,dim=1) ## bs,d_model
+        if self.training and self.jitter_noise > 0:
+            context_embed *= torch.empty_like(context_embed).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
+        # 2. get routing weights
+        router_logits = self.gate(context_embed)
+        _routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+        routing_weights, selected_experts = torch.topk(_routing_weights, self.top_k, dim=-1)
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        routing_weights = routing_weights.to(context_embed.dtype) ## [batch_size,top_k]
+
+        # 3. define final states (to be filled up)
+        final_visual_features = None
+
+        # 4. define expert_mask :: [num_experts,top_k,batch_size]
+        expert_mask = F.one_hot(selected_experts,num_classes=self.num_experts).permute(2,1,0)
+
+        ## for-loop over experts
+        for expert_id,expert_name in enumerate(self.expert_names):
+            if expert_id == 0:
+                expert = self.vision_backbone.dino_featurizer
+            elif expert_id == 1:
+                expert = self.vision_backbone.siglip_featurizer
+
+            projector = self.projector[expert_id]
+
+            top_idx,batch_idx = torch.where(expert_mask[expert_id])
+
+            if len(top_idx)>0:
+                current_pixel_values = pixel_values[expert_name][batch_idx]
+
+                with torch.set_grad_enabled(self.vision_backbone_requires_grad):
+                    ## [_bsz, num_patches, vision_embed_dim]
+                    visual_feature = expert(current_pixel_values)
+
+                ## [_bsz,num_patches,llm_embed_dim]
+                overwatch.info(f"{visual_feature.shape=},{_routing_weights=}")
+                visual_feature = projector(visual_feature) * routing_weights[batch_idx,top_idx,None,None]
+                
+                if final_visual_features is None:
+                    _,num_patches,_ = visual_feature.shape
+                    final_visual_features = torch.zeros(
+                        (batch_size, num_patches, self.llm_backbone.embed_dim),
+                        dtype=context_embed.dtype, device=context_embed.device
+                    )
+
+                final_visual_features.index_add_(0,batch_idx,visual_feature.to(context_embed.dtype))
+        
+        return final_visual_features,router_logits
 
     # === GenerationMixin Methods ===
     #   => Note: The following methods override the functionality of `transformers.GenerationMixin`; these expect the

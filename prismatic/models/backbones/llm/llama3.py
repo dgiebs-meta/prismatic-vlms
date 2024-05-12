@@ -1,5 +1,5 @@
 """
-llama2.py
+llama3.py
 
 Class definition for all LLMs derived from LlamaForCausalLM.
 """
@@ -12,16 +12,14 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 from prismatic.models.backbones.llm.base_llm import HFCausalLLMBackbone
 from prismatic.models.backbones.llm.prompting import (
-    LLaMa2ChatPromptBuilder,
     PromptBuilder,
     Llama3PurePromptBuilder,
-    VicunaV15ChatPromptBuilder,
 )
 
 # Registry =>> Support LLaMa-2 Models (from HF Transformers)
 # fmt: off
 LLAMA3_MODELS = {
-    # === Pure Meta LLaMa-2 (non-instruct/chat-tuned) Models ===
+    # === Pure Meta LLaMa-3 (non-instruct/chat-tuned) Models ===
     "llama3-8b-pure": {
         "llm_family": "llama3", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Meta-Llama-3-8B"
     },
@@ -74,5 +72,5 @@ class LLaMa3LLMBackbone(HFCausalLLMBackbone):
 
     @property
     def half_precision_dtype(self) -> torch.dtype:
-        """LLaMa-2 was trained in BF16; see https://huggingface.co/docs/transformers/main/model_doc/llama2."""
+        """LLaMa-3 was trained in BF16; see https://huggingface.co/docs/transformers/main/model_doc/llama3."""
         return torch.bfloat16

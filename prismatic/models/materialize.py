@@ -19,7 +19,7 @@ from prismatic.models.backbones.vision import (
     SigLIPViTBackbone,
     VisionBackbone,
 )
-from prismatic.models.vlms import PrismaticVLM
+from prismatic.models.vlms import PrismaticVLM,MoveVLM
 
 # === Registries =>> Maps ID --> {cls(), kwargs} :: Different Registries for Vision Backbones, LLM Backbones, VLMs ===
 # fmt: off
@@ -115,7 +115,7 @@ def get_vlm(
     enable_mixed_precision_training: bool = True,
 ) -> PrismaticVLM:
     """Lightweight wrapper around initializing a VLM, mostly for future-proofing (if one wants to add a new VLM)."""
-    return PrismaticVLM(
+    return MoveVLM(
         model_id,
         vision_backbone,
         llm_backbone,
