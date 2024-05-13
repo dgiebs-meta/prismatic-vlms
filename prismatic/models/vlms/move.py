@@ -35,6 +35,26 @@ overwatch = initialize_overwatch(__name__)
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 
+class AddAuxiliaryLoss(torch.autograd.Function):
+    """
+    The trick function of adding auxiliary (aux) loss, 
+    which includes the gradient of the aux loss during backpropagation.
+    Copied from DeepSeekMOE
+    """
+    @staticmethod
+    def forward(ctx, x, loss):
+        assert loss.numel() == 1
+        ctx.dtype = loss.dtype
+        ctx.required_aux_loss = loss.requires_grad
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_loss = None
+        if ctx.required_aux_loss:
+            grad_loss = torch.ones(1, dtype=ctx.dtype, device=grad_output.device)
+        return grad_output, grad_loss
+    
 
 class MoveVLM(VLM):
     def __init__(
@@ -73,6 +93,7 @@ class MoveVLM(VLM):
         self.expert_names = ["dino","siglip"]
         self.gate = LinearProjector(llm_backbone.embed_dim,self.num_experts)
         self.jitter_noise = 0.01
+        self.lb_alpha = 1.0
 
         # Trackers
         self.vision_backbone_requires_grad = False
@@ -314,7 +335,8 @@ class MoveVLM(VLM):
                 return_dict=return_dict,
             )
  
-        projected_patch_embeddings,router_logits = self.mixture_of_visual_experts(context_ids=input_ids,pixel_values=pixel_values)
+        projected_patch_embeddings,router_logits,aux_loss = self.mixture_of_visual_experts(context_ids=input_ids,pixel_values=pixel_values)
+        overwatch.info(f"{aux_loss=}")
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -422,8 +444,34 @@ class MoveVLM(VLM):
             return_dict=return_dict,
         )
 
+    @staticmethod
+    def get_expert_balance_loss(
+        scores_over_all_experts, # [B,NumExp]
+        selected_expert_idx, # [B,TopK]
+        alpha,
+    ):
+        """
+        This is the load balance loss for MOE model, inspired by DeepSeekMOE
+        """
+        batch_size,n_routed_experts = scores_over_all_experts.shape
+        n_selected_experts = selected_expert_idx.shape[1]
+        device = scores_over_all_experts.device
+
+        ce = torch.zeros(batch_size,n_routed_experts,device=device)
+        ce.scatter_add_(
+            dim=1,
+            index=selected_expert_idx,
+            src=torch.ones(batch_size,n_selected_experts,device=device).div_(n_selected_experts / n_routed_experts)
+        )
+        aux_loss = (ce * scores_over_all_experts).sum(dim = 1).mean() * alpha
+        return aux_loss
+
+
+
     # === Mixture-of-Visual-Experts ===
     def mixture_of_visual_experts(self,context_ids,pixel_values):
+        
+        aux_loss = None
 
         # 1. get context embeds
         batch_size,_ = context_ids.shape
@@ -432,10 +480,13 @@ class MoveVLM(VLM):
         context_embed = torch.mean(context_embed,dim=1) ## bs,d_model
         if self.training and self.jitter_noise > 0:
             context_embed *= torch.empty_like(context_embed).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
+        
         # 2. get routing weights
         router_logits = self.gate(context_embed)
         _routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(_routing_weights, self.top_k, dim=-1)
+        if self.training and self.lb_alpha > 0:
+            aux_loss = self.get_expert_balance_loss(_routing_weights,selected_experts,self.lb_alpha)
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         routing_weights = routing_weights.to(context_embed.dtype) ## [batch_size,top_k]
 
@@ -476,7 +527,10 @@ class MoveVLM(VLM):
 
                 final_visual_features.index_add_(0,batch_idx,visual_feature.to(context_embed.dtype))
         
-        return final_visual_features,router_logits
+        if aux_loss is not None:
+            final_visual_features = AddAuxiliaryLoss.apply(final_visual_features, aux_loss)
+
+        return final_visual_features,router_logits,aux_loss
 
     # === GenerationMixin Methods ===
     #   => Note: The following methods override the functionality of `transformers.GenerationMixin`; these expect the
