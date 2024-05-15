@@ -73,16 +73,29 @@ def get_vision_backbone_and_transform(
     vision_backbone_id: str, image_resize_strategy: str
 ) -> Tuple[VisionBackbone, ImageTransform]:
     """Instantiate a Vision Backbone, returning both the nn.Module wrapper class and default Image Transform."""
-    if vision_backbone_id in VISION_BACKBONES:
-        vision_cfg = VISION_BACKBONES[vision_backbone_id]
-        vision_backbone: VisionBackbone = vision_cfg["cls"](
-            vision_backbone_id, image_resize_strategy, **vision_cfg["kwargs"]
-        )
-        image_transform = vision_backbone.get_image_transform()
-        return vision_backbone, image_transform
 
+    def get_single_vision_backbone(backbone_id):
+
+        if backbone_id in VISION_BACKBONES:
+            vision_cfg = VISION_BACKBONES[backbone_id]
+            vision_backbone: VisionBackbone = vision_cfg["cls"](
+                backbone_id, image_resize_strategy, **vision_cfg["kwargs"]
+            )
+            image_transform = vision_backbone.get_image_transform()
+            return vision_backbone, image_transform
+        else:
+            raise ValueError(f"Vision Backbone `{backbone_id}` is not supported!")
+    
+    if isinstance(vision_backbone_id,list):
+        backbones,transforms = {},{}
+        for backbone_id in vision_backbone_id:
+            backbone,transform = get_single_vision_backbone(backbone_id)
+            bakcbone_name = backbone.name
+            backbones[bakcbone_name] = backbone
+            transforms[bakcbone_name] = transform
+        return backbones,transforms
     else:
-        raise ValueError(f"Vision Backbone `{vision_backbone_id}` is not supported!")
+        return get_single_vision_backbone(vision_backbone_id)
 
 
 def get_llm_backbone_and_tokenizer(
@@ -113,12 +126,24 @@ def get_vlm(
     vision_backbone: VisionBackbone,
     llm_backbone: LLMBackbone,
     enable_mixed_precision_training: bool = True,
+    enable_moe: bool = False,
+    **kwargs,
 ) -> PrismaticVLM:
     """Lightweight wrapper around initializing a VLM, mostly for future-proofing (if one wants to add a new VLM)."""
-    return MoveVLM(
-        model_id,
-        vision_backbone,
-        llm_backbone,
-        enable_mixed_precision_training=enable_mixed_precision_training,
-        arch_specifier=arch_specifier,
-    )
+    if enable_moe:
+        return MoveVLM(
+            model_id,
+            vision_backbone,
+            llm_backbone,
+            enable_mixed_precision_training=enable_mixed_precision_training,
+            arch_specifier=arch_specifier,
+            **kwargs,
+        )
+    else:
+        return PrismaticVLM(
+            model_id,
+            vision_backbone,
+            llm_backbone,
+            enable_mixed_precision_training=enable_mixed_precision_training,
+            arch_specifier=arch_specifier,
+        )

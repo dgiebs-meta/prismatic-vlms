@@ -64,6 +64,10 @@ class MoveVLM(VLM):
         llm_backbone: LLMBackbone,
         enable_mixed_precision_training: bool = True,
         arch_specifier: str = "gelu-mlp",
+        num_experts: int = None,
+        topk_experts: int = None,
+        jitter_noise: float = 0.0,
+        lb_alpha: float = 0.01
     ) -> None:
         super().__init__(
             "prismatic",
@@ -81,19 +85,20 @@ class MoveVLM(VLM):
         if arch_specifier == "linear":
             self.projector = LinearProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
         elif arch_specifier.endswith("fused-gelu-mlp"):
-            self.projector = self.projector = nn.ModuleList([FusedMLPProjector(1024, llm_backbone.embed_dim),MLPProjector(1152, llm_backbone.embed_dim)])
+            self.projector = nn.ModuleList(
+                [FusedMLPProjector(backbone.embed_dim, llm_backbone.embed_dim) for backbone in vision_backbone ]
+            )
         elif arch_specifier.endswith("gelu-mlp"):
             self.projector = nn.ModuleList([MLPProjector(1024, llm_backbone.embed_dim),MLPProjector(1152, llm_backbone.embed_dim)])
         else:
             raise ValueError(f"PrismaticVLM with `{arch_specifier = }` is not supported!")
 
         ## monkey patch
-        self.num_experts = 2
-        self.top_k = 1
-        self.expert_names = ["dino","siglip"]
+        self.num_experts = num_experts
+        self.topk_experts = topk_experts
         self.gate = LinearProjector(llm_backbone.embed_dim,self.num_experts)
-        self.jitter_noise = 0.01
-        self.lb_alpha = 1.0
+        self.jitter_noise = jitter_noise
+        self.lb_alpha = lb_alpha
 
         # Trackers
         self.vision_backbone_requires_grad = False
@@ -282,7 +287,8 @@ class MoveVLM(VLM):
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
-        context_ids: Optional[torch.LongTensor] = None,
+        query_ids: Optional[torch.LongTensor] = None,
+        query_attention_mask: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -334,9 +340,19 @@ class MoveVLM(VLM):
                 output_hidden_states=output_hidden_states,
                 return_dict=return_dict,
             )
- 
-        projected_patch_embeddings,router_logits,aux_loss = self.mixture_of_visual_experts(context_ids=input_ids,pixel_values=pixel_values)
-        overwatch.info(f"{aux_loss=}")
+        
+        if isinstance(pixel_values, dict):
+            pixel_values = {k: pixel_values[k][multimodal_indices] for k in pixel_values}
+        else:
+            pixel_values = pixel_values[multimodal_indices]
+
+        context_embed = self.get_context_embed(query_ids,query_attention_mask)
+
+        projected_patch_embeddings,router_logits,load_balance_loss = self.mixture_of_visual_experts(
+            context_embed = context_embed,
+            pixel_values  = pixel_values
+        )
+
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -431,7 +447,7 @@ class MoveVLM(VLM):
             fused_labels = torch.vstack([multimodal_labels, unimodal_labels])
 
         # Run LLM Forward --> returns CausalLMOutputWithPast!
-        return self.llm_backbone(
+        llm_output =  self.llm_backbone(
             input_ids=None,
             attention_mask=fused_attention_mask,
             position_ids=None,
@@ -444,11 +460,40 @@ class MoveVLM(VLM):
             return_dict=return_dict,
         )
 
+        if load_balance_loss is not None:
+            llm_output.loss += self.lb_alpha * load_balance_loss
+    
+        return llm_output
+    
+    def get_query_embed(self,input_ids,attention_mask):
+        """
+        Get the query_embed used for routing
+        """
+        if self.query_embed_type == 'avg_token_embedding':
+            query_embed = self.llm_backbone.embed_input_ids(input_ids)
+            query_embed = query_embed * attention_mask.unsqueeze(-1).float()
+            query_embed = query_embed.sum(dim=1) / attention_mask.sum(dim=1,keep_dim=True)
+            return query_embed
+
+        elif self.query_embed_type.startswith("llm_layer"):
+            layer_idx = int(self.query_embed_type.split("_")[-1])
+            hidden_states = self.llm.get_intermediate_layer_output(
+                input_ids,attention_mask,layer_idx=layer_idx,
+            ) ## [batch_size, L, d_model]
+            left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+            if left_padding:
+                return hidden_states[:, -1]
+            else:
+                sequence_lengths = attention_mask.sum(dim=1) - 1
+                batch_size = hidden_states.shape[0]
+                return hidden_states[torch.arange(batch_size, device=hidden_states.device), sequence_lengths]
+
+
+
     @staticmethod
     def get_expert_balance_loss(
         scores_over_all_experts, # [B,NumExp]
         selected_expert_idx, # [B,TopK]
-        alpha,
     ):
         """
         This is the load balance loss for MOE model, inspired by DeepSeekMOE
@@ -463,32 +508,29 @@ class MoveVLM(VLM):
             index=selected_expert_idx,
             src=torch.ones(batch_size,n_selected_experts,device=device).div_(n_selected_experts / n_routed_experts)
         )
-        aux_loss = (ce * scores_over_all_experts).sum(dim = 1).mean() * alpha
+        aux_loss = (ce * scores_over_all_experts).sum(dim = 1).mean()
         return aux_loss
 
 
 
     # === Mixture-of-Visual-Experts ===
-    def mixture_of_visual_experts(self,context_ids,pixel_values):
+    def mixture_of_visual_experts(self,query_embed,pixel_values):
         
         aux_loss = None
+        batch_size,_ = query_embed.shape
 
-        # 1. get context embeds
-        batch_size,_ = context_ids.shape
-        context_embed = self.llm_backbone.embed_input_ids(context_ids)
-        ## TODO: configurable pooling + pad masking
-        context_embed = torch.mean(context_embed,dim=1) ## bs,d_model
+        # 1. add noise
         if self.training and self.jitter_noise > 0:
-            context_embed *= torch.empty_like(context_embed).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
+            query_embed *= torch.empty_like(query_embed).uniform_(1.0 - self.jitter_noise, 1.0 + self.jitter_noise)
         
         # 2. get routing weights
-        router_logits = self.gate(context_embed)
+        router_logits = self.gate(query_embed)
         _routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-        routing_weights, selected_experts = torch.topk(_routing_weights, self.top_k, dim=-1)
+        routing_weights, selected_experts = torch.topk(_routing_weights, self.topk_experts, dim=-1)
         if self.training and self.lb_alpha > 0:
-            aux_loss = self.get_expert_balance_loss(_routing_weights,selected_experts,self.lb_alpha)
+            aux_loss = self.get_expert_balance_loss(_routing_weights,selected_experts)
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
-        routing_weights = routing_weights.to(context_embed.dtype) ## [batch_size,top_k]
+        routing_weights = routing_weights.to(query_embed.dtype) ## [batch_size,top_k]
 
         # 3. define final states (to be filled up)
         final_visual_features = None
@@ -522,14 +564,11 @@ class MoveVLM(VLM):
                     _,num_patches,_ = visual_feature.shape
                     final_visual_features = torch.zeros(
                         (batch_size, num_patches, self.llm_backbone.embed_dim),
-                        dtype=context_embed.dtype, device=context_embed.device
+                        dtype=query_embed.dtype, device=query_embed.device
                     )
 
-                final_visual_features.index_add_(0,batch_idx,visual_feature.to(context_embed.dtype))
+                final_visual_features.index_add_(0,batch_idx,visual_feature.to(query_embed.dtype))
         
-        if aux_loss is not None:
-            final_visual_features = AddAuxiliaryLoss.apply(final_visual_features, aux_loss)
-
         return final_visual_features,router_logits,aux_loss
 
     # === GenerationMixin Methods ===
@@ -545,6 +584,8 @@ class MoveVLM(VLM):
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
+        query_ids = None,
+        query_attention_mask = None,
         **kwargs: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
         """Borrowed from `LlamaForCausalLM` --> in general, just handles caching logic during generation."""
@@ -564,6 +605,8 @@ class MoveVLM(VLM):
                 "pixel_values": pixel_values,
                 "past_key_values": past_key_values,
                 "use_cache": use_cache,
+                "query_ids":query_ids,
+                "query_attention_mask":query_attention_mask,
             }
         )
 

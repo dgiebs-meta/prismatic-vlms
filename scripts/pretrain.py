@@ -164,6 +164,11 @@ def pretrain(cfg: PretrainConfig) -> None:
         vision_backbone,
         llm_backbone,
         enable_mixed_precision_training=cfg.model.enable_mixed_precision_training,
+        enable_moe=cfg.model.enable_moe,
+        num_experts=cfg.model.num_experts,
+        topk_experts=cfg.model.topk_experts,
+        jitter_noise=cfg.model.jitter_noise,
+        lb_alpha=cfg.model.lb_alpha,
     )
 
     # [Explicit] Call to `freeze_backbones` here for clarity => will log exactly what is frozen / what's not!

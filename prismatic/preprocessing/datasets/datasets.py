@@ -158,9 +158,12 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             input_ids.extend(turn_input_ids)
             labels.extend(turn_labels)
 
+            if turn_idx == 0:
+                query_ids = turn_input_ids
+
         # Tensorize =>> Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches after)
         #   - IMPORTANT => IF WE'RE USING HF LLM.forward(... labels=labels), SHIFTING HAPPENS _INSIDE_ MODEL!
-        input_ids, labels = torch.tensor(input_ids), torch.tensor(labels)
+        input_ids, labels, query_ids = torch.tensor(input_ids), torch.tensor(labels), torch.tensor(query_ids)
 
         # Handle Truncation (if necessary)
         input_ids, labels = input_ids[: self.tokenizer.model_max_length], labels[: self.tokenizer.model_max_length]
@@ -173,13 +176,19 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             labels[0] = IGNORE_INDEX
 
             # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
-            pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
+            if isinstance(self.image_transform,dict):
+                pixel_values = {}
+                for name,transform in self.image_transform.items():
+                    pixel_values[name] = transform(Image.open(self.image_dir / image_path).convert("RGB"))
 
-            return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels)
+            else:
+                pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
+
+            return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels,query_ids=query_ids)
 
         else:
             # No image --> return `pixel_values` = None; Collator will do the smart batch handling for us!
-            return dict(pixel_values=None, input_ids=input_ids, labels=labels)
+            return dict(pixel_values=None, input_ids=input_ids, labels=labels,query_ids=None)
 
     def get_modality_lengths(self) -> List[Tuple[bool, int]]:
         """Get a list of modalities (unimodal / text-only vs. multimodal) and length of conversations per example."""
