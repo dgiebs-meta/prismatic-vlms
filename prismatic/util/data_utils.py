@@ -69,7 +69,7 @@ class PaddedCollatorForLanguageModeling:
         else:
             raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
 
-        if len(multimodal_indices) != 0:            
+        if len(multimodal_indices) != 0:          
             query_ids = [instance['query_ids'] for instance in instances if instance['query_ids'] is not None]
             query_ids = pad_sequence(query_ids, batch_first=True, padding_value=self.pad_token_id)
             query_attention_mask = query_ids.ne(self.pad_token_id) 

@@ -8,7 +8,7 @@ variant thereof. A given model variant configures the following attributes:
     - [Optional] Stage 1 (`align`) Optimization Hyperparameters
     - Stage 2 (`finetune`) Optimization Hyperparameters
 """
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 from enum import Enum, unique
 from typing import Optional
 
@@ -408,8 +408,8 @@ class Prism_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
 # Prism-DINOSigLIP-MOE
 @dataclass
 class Move_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
-    model_id: str = "move-dinosiglip-controlled+7b"
-    vision_backbone_id: str = ["in1k-vit-l","dinov2-vit-l","clip-vit-l-336px","siglip-vit-so400m-384px"]
+    model_id: str = "move-4exp-controlled+7b"
+    vision_backbone_id: list = field(default_factory=lambda: ["in1k-vit-l","dinov2-vit-l","clip-vit-l-336px","siglip-vit-so400m-384px"])
     image_resize_strategy: str = "resize-naive"
     llm_backbone_id: str = "llama2-7b-pure"
     arch_specifier: str = "no-align+fused-gelu-mlp"
@@ -420,7 +420,7 @@ class Move_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
     topk_experts: int = 2
     jitter_noise: float = 0.01
     lb_alpha: float = 0.01
-    
+    query_embed_type: str = "llm_layer_0"
 
 
 
@@ -539,6 +539,9 @@ class ModelRegistry(Enum):
     # === Llama3 == #
     PRISM_DINOSIGLIP_CONTROLLED_7B_LLAMA3 = Prism_7B_DINOSigLIP_Controlled_Llama3
     PRISM_DINOSIGLIP_7B_LLAMA3 = Prism_7B_DINOSigLIP_Llama3
+
+    # === Move === #
+    MOVE_7B_DINOSIGLIP_CONTROLLED = Move_7B_DINOSigLIP_Controlled
 
     @property
     def model_id(self) -> str:

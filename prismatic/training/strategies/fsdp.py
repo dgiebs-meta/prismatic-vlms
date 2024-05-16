@@ -143,7 +143,11 @@ class FSDPStrategy(TrainingStrategy):
 
             # When running FSDP with a frozen vision backbone --> move to half precision!
             overwatch.info("Casting Vision Backbone to *Half Precision* via `.to(dtype=...)`")
-            self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
+            if isinstance(self.vlm.vision_backbone,torch.nn.ModuleList):
+                for backbone in self.vlm.vision_backbone:
+                    backbone.to(dtype=backbone.half_precision_dtype)
+            else:
+                self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
 
         else:
             # If we're not using mixed precision, everything is in default full precision!

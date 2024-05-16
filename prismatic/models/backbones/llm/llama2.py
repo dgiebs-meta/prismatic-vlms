@@ -47,14 +47,8 @@ class MyLlamaForCausalLM(LlamaForCausalLM):
                 "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
             )
 
-        if self.gradient_checkpointing and self.training and use_cache:
-            # logger.warning_once(
-            #     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
-            # )
-            use_cache = False
-
         if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
+            inputs_embeds = self.model.embed_tokens(input_ids)
 
         past_seen_tokens = 0
         if use_cache:  # kept for BC (cache positions)
@@ -72,7 +66,7 @@ class MyLlamaForCausalLM(LlamaForCausalLM):
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
-        causal_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_seen_tokens)
+        causal_mask = self.model._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_seen_tokens)
 
         # embed positions
         hidden_states = inputs_embeds
@@ -80,12 +74,12 @@ class MyLlamaForCausalLM(LlamaForCausalLM):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
 
-        for decoder_layer in self.layers[:layer_idx+1]:
+        for decoder_layer in self.model.layers[:layer_idx+1]:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
-                layer_outputs = self._gradient_checkpointing_func(
+            if self.model.gradient_checkpointing and self.training:
+                layer_outputs = self.model._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
                     causal_mask,
@@ -108,7 +102,7 @@ class MyLlamaForCausalLM(LlamaForCausalLM):
 
             hidden_states = layer_outputs[0]
 
-        hidden_states = self.norm(hidden_states)
+        hidden_states = self.model.norm(hidden_states)
 
         return hidden_states
 

@@ -169,6 +169,7 @@ def pretrain(cfg: PretrainConfig) -> None:
         topk_experts=cfg.model.topk_experts,
         jitter_noise=cfg.model.jitter_noise,
         lb_alpha=cfg.model.lb_alpha,
+        query_embed_type=cfg.model.query_embed_type,
     )
 
     # [Explicit] Call to `freeze_backbones` here for clarity => will log exactly what is frozen / what's not!
@@ -181,13 +182,14 @@ def pretrain(cfg: PretrainConfig) -> None:
 
     # Get Dataset for Specified Stage
     overwatch.info(f"Creating Dataset `{cfg.dataset.dataset_id}` => Stage: `{cfg.stage}`")
+    default_image_resolution = vision_backbone[0].default_image_resolution if isinstance(vision_backbone,list) else  vision_backbone.default_image_resolution
     train_dataset, collator = get_dataset_and_collator(
         cfg.stage,
         cfg.dataset,
         image_transform,
         tokenizer,
         prompt_builder_fn=llm_backbone.prompt_builder_fn,
-        default_image_resolution=vision_backbone.default_image_resolution,
+        default_image_resolution=default_image_resolution,
         padding_side=tokenizer.padding_side,
     )
 

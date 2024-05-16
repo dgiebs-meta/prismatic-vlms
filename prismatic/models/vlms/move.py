@@ -67,7 +67,8 @@ class MoveVLM(VLM):
         num_experts: int = None,
         topk_experts: int = None,
         jitter_noise: float = 0.0,
-        lb_alpha: float = 0.01
+        lb_alpha: float = 0.01,
+        query_embed_type: float = None,
     ) -> None:
         super().__init__(
             "prismatic",
@@ -77,16 +78,18 @@ class MoveVLM(VLM):
             enable_mixed_precision_training=enable_mixed_precision_training,
         )
 
+        assert isinstance(vision_backbone,list)
+        self.vision_backbone = nn.ModuleList(vision_backbone)
         # Set Weight Initialization Seed for Projector Consistency
-        torch.manual_seed(vision_backbone.embed_dim)
-
+        torch.manual_seed(vision_backbone[0].embed_dim)
+        self.query_embed_type = query_embed_type
         # Initialize Projection (Adapter) based on `arch_specifier`
         self.arch_specifier = arch_specifier
         if arch_specifier == "linear":
             self.projector = LinearProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
         elif arch_specifier.endswith("fused-gelu-mlp"):
             self.projector = nn.ModuleList(
-                [FusedMLPProjector(backbone.embed_dim, llm_backbone.embed_dim) for backbone in vision_backbone ]
+                [FusedMLPProjector(backbone.embed_dim, llm_backbone.embed_dim) for backbone in vision_backbone]
             )
         elif arch_specifier.endswith("gelu-mlp"):
             self.projector = nn.ModuleList([MLPProjector(1024, llm_backbone.embed_dim),MLPProjector(1152, llm_backbone.embed_dim)])
@@ -180,7 +183,8 @@ class MoveVLM(VLM):
             overwatch.info(f"[TRAINABLE] 🔥 =>> Projector `{self.arch_specifier}`", ctx_level=1)
 
         elif stage == "finetune":
-            self.vision_backbone.requires_grad_(False)
+            for backbone in self.vision_backbone:
+                backbone.requires_grad_(False)
             self.llm_backbone.requires_grad_(True)
             self.projector.requires_grad_(True)
 
@@ -191,7 +195,7 @@ class MoveVLM(VLM):
             self.vision_backbone_requires_grad = False
 
             # Explicitly Log Frozen / Unfrozen Components
-            overwatch.info(f"[Frozen]    🥶 =>> Vision Backbone `{self.vision_backbone.identifier}`", ctx_level=1)
+            overwatch.info(f"[Frozen]    🥶 =>> Vision Backbone `{[b.identifier for b in self.vision_backbone]}`", ctx_level=1)
             overwatch.info(f"[TRAINABLE] 🔥 =>> LLM Backbone `{self.llm_backbone.identifier}`", ctx_level=1)
             overwatch.info(f"[TRAINABLE] 🔥 =>> Projector `{self.arch_specifier}`", ctx_level=1)
 
@@ -259,7 +263,7 @@ class MoveVLM(VLM):
 
     def get_fsdp_wrapping_policy(self) -> Callable:
         """Return an FSDP _or_policy over the policies returned by each individual backbone (and our VLM policy)."""
-        vision_fsdp_wrapping_policy = self.vision_backbone.get_fsdp_wrapping_policy()
+        vision_fsdp_wrapping_policy = self.vision_backbone[0].get_fsdp_wrapping_policy()
         llm_fsdp_wrapping_policy = self.llm_backbone.get_fsdp_wrapping_policy()
 
         # Get Prismatic Wrapping Policy =>> just a module wrapping policy around `self.projector`
@@ -301,7 +305,6 @@ class MoveVLM(VLM):
         multimodal_indices: Optional[torch.LongTensor] = None,
     ) -> CausalLMOutputWithPast:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
-
         # Handle Inference (leverage cache, short-circuit on just LLM forward)
         if input_ids.shape[1] == 1 and past_key_values is not None:
             # We're leveraging the cache, so just redirect to `self.llm_backbone` with `input_ids` and `past_key_values`
@@ -346,10 +349,10 @@ class MoveVLM(VLM):
         else:
             pixel_values = pixel_values[multimodal_indices]
 
-        context_embed = self.get_context_embed(query_ids,query_attention_mask)
+        query_embed = self.get_query_embed(query_ids,query_attention_mask)
 
         projected_patch_embeddings,router_logits,load_balance_loss = self.mixture_of_visual_experts(
-            context_embed = context_embed,
+            query_embed = query_embed,
             pixel_values  = pixel_values
         )
 
@@ -477,8 +480,8 @@ class MoveVLM(VLM):
 
         elif self.query_embed_type.startswith("llm_layer"):
             layer_idx = int(self.query_embed_type.split("_")[-1])
-            hidden_states = self.llm.get_intermediate_layer_output(
-                input_ids,attention_mask,layer_idx=layer_idx,
+            hidden_states = self.llm_backbone.llm.get_intermediate_layer_output(
+                input_ids=input_ids,attention_mask=attention_mask,layer_idx=layer_idx,
             ) ## [batch_size, L, d_model]
             left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
             if left_padding:
@@ -539,22 +542,17 @@ class MoveVLM(VLM):
         expert_mask = F.one_hot(selected_experts,num_classes=self.num_experts).permute(2,1,0)
 
         ## for-loop over experts
-        for expert_id,expert_name in enumerate(self.expert_names):
-            if expert_id == 0:
-                expert = self.vision_backbone.dino_featurizer
-            elif expert_id == 1:
-                expert = self.vision_backbone.siglip_featurizer
+        for idx,vision_expert in enumerate(self.vision_backbone):
 
-            projector = self.projector[expert_id]
-
-            top_idx,batch_idx = torch.where(expert_mask[expert_id])
+            projector = self.projector[idx]
+            top_idx,batch_idx = torch.where(expert_mask[idx])
 
             if len(top_idx)>0:
-                current_pixel_values = pixel_values[expert_name][batch_idx]
+                current_pixel_values = pixel_values[vision_expert.identifier][batch_idx]
 
                 with torch.set_grad_enabled(self.vision_backbone_requires_grad):
                     ## [_bsz, num_patches, vision_embed_dim]
-                    visual_feature = expert(current_pixel_values)
+                    visual_feature = vision_expert(current_pixel_values)
 
                 ## [_bsz,num_patches,llm_embed_dim]
                 overwatch.info(f"{visual_feature.shape=},{_routing_weights=}")

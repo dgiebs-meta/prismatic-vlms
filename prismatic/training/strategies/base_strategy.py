@@ -178,12 +178,17 @@ class TrainingStrategy(ABC):
                         dtype=self.mixed_precision_dtype,
                         enabled=self.enable_mixed_precision_training,
                     ):
+                        moe_kwargs = {}
+                        if "query_ids" in batch:
+                            moe_kwargs["query_ids"] = batch['query_ids']
+                            moe_kwargs["query_attention_mask"] = batch['query_attention_mask']
                         output: CausalLMOutputWithPast = self.vlm(
                             input_ids=batch["input_ids"],
                             attention_mask=batch["attention_mask"],
                             pixel_values=batch["pixel_values"],
                             labels=batch["labels"],
                             multimodal_indices=batch["multimodal_indices"],
+                            **moe_kwargs,
                         )
                         loss = output.loss
 

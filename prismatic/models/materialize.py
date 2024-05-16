@@ -87,11 +87,11 @@ def get_vision_backbone_and_transform(
             raise ValueError(f"Vision Backbone `{backbone_id}` is not supported!")
     
     if isinstance(vision_backbone_id,list):
-        backbones,transforms = {},{}
+        backbones,transforms = [],{}
         for backbone_id in vision_backbone_id:
             backbone,transform = get_single_vision_backbone(backbone_id)
-            bakcbone_name = backbone.name
-            backbones[bakcbone_name] = backbone
+            bakcbone_name = backbone.identifier
+            backbones.append(backbone)
             transforms[bakcbone_name] = transform
         return backbones,transforms
     else:
