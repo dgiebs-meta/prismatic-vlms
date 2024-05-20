@@ -9,7 +9,7 @@ from typing import Callable, Optional
 import torch
 
 from prismatic.models.vlms import PrismaticVLM
-from prismatic.training.strategies import FSDPStrategy, TrainingStrategy
+from prismatic.training.strategies import FSDPStrategy, TrainingStrategy,DDPStrategy
 
 # Registry =>> Maps ID --> {cls(), kwargs} :: supports FSDP for now, but DDP handler is also implemented!
 TRAIN_STRATEGIES = {

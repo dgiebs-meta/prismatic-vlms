@@ -8,7 +8,7 @@ SIGLIP_VISION_BACKBONES = {
     "siglip-vit-b16-224px": "vit_base_patch16_siglip_224",
     "siglip-vit-b16-256px": "vit_base_patch16_siglip_256",
     "siglip-vit-b16-384px": "vit_base_patch16_siglip_384",
-    "siglip-vit-so400m": "vit_so400m_patch14_siglip_224",
+    "siglip-vit-so400m": "vit_so400m_patch14_siglip_224", # patch 14
     "siglip-vit-so400m-384px": "vit_so400m_patch14_siglip_384",
 }
 

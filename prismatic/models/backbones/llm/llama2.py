@@ -21,6 +21,7 @@ from prismatic.models.backbones.llm.prompting import (
 
 
 class MyLlamaForCausalLM(LlamaForCausalLM):
+        
     def get_intermediate_layer_output(
         self,
         input_ids: torch.LongTensor = None,

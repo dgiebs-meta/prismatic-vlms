@@ -18,6 +18,7 @@ from prismatic.models.backbones.vision import (
     IN1KViTBackbone,
     SigLIPViTBackbone,
     VisionBackbone,
+    DeitBackbone,
 )
 from prismatic.models.vlms import PrismaticVLM,MoveVLM
 
@@ -28,9 +29,10 @@ from prismatic.models.vlms import PrismaticVLM,MoveVLM
 VISION_BACKBONES = {
     # === 224px Backbones ===
     "clip-vit-l": {"cls": CLIPViTBackbone, "kwargs": {"default_image_size": 224}},
-    "siglip-vit-so400m": {"cls": SigLIPViTBackbone, "kwargs": {"default_image_size": 224}},
-    "dinov2-vit-l": {"cls": DinoV2ViTBackbone, "kwargs": {"default_image_size": 224}},
-    "in1k-vit-l": {"cls": IN1KViTBackbone, "kwargs": {"default_image_size": 224}},
+    "siglip-vit-so400m": {"cls": SigLIPViTBackbone, "kwargs": {"default_image_size": 224}}, # patch 14
+    "dinov2-vit-l": {"cls": DinoV2ViTBackbone, "kwargs": {"default_image_size": 224}}, # patch 14
+    "in1k-vit-l": {"cls": IN1KViTBackbone, "kwargs": {"default_image_size": 224}}, # patch: 16
+    "deit3-huge":{"cls": DeitBackbone, "kwargs":{"default_image_size":224}},
 
     # === Assorted CLIP Backbones ===
     "clip-vit-b": {"cls": CLIPViTBackbone, "kwargs": {"default_image_size": 224}},

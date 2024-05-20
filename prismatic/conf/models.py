@@ -409,10 +409,11 @@ class Prism_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
 @dataclass
 class Move_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
     model_id: str = "move-4exp-controlled+7b"
-    vision_backbone_id: list = field(default_factory=lambda: ["in1k-vit-l","dinov2-vit-l","clip-vit-l-336px","siglip-vit-so400m-384px"])
+    vision_backbone_id: list = field(default_factory=lambda: ["siglip-vit-so400m","dinov2-vit-l","clip-vit-l","deit3-huge"])
     image_resize_strategy: str = "resize-naive"
     llm_backbone_id: str = "llama2-7b-pure"
     arch_specifier: str = "no-align+fused-gelu-mlp"
+    finetune_train_strategy: str = 'fsdp-full-shard'
 
     ## MOE-relevant parameters
     enable_moe: bool = True
@@ -420,7 +421,7 @@ class Move_7B_DINOSigLIP_Controlled(Exp_7B_One_Stage):
     topk_experts: int = 2
     jitter_noise: float = 0.01
     lb_alpha: float = 0.01
-    query_embed_type: str = "llm_layer_0"
+    query_embed_type: str = "avg_token_embedding"
 
 
 

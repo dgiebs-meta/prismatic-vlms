@@ -19,6 +19,9 @@ from prismatic.overwatch import initialize_overwatch
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
+from datetime import datetime
+def get_time():
+    return datetime.now().strftime('%H:%M:%S')
 
 # === Define Tracker Interface ===
 class Tracker(Protocol):
@@ -132,6 +135,7 @@ class Metrics:
         self.global_step, self.start_time, self.step_start_time = 0, time.time(), time.time()
         self.state = {
             "loss_raw": deque(maxlen=grad_accumulation_steps),
+            "loss_moe_raw":deque(maxlen=grad_accumulation_steps),
             "loss": deque(maxlen=window_size),
             "step_time": deque(maxlen=window_size),
             "lr": [],
@@ -181,6 +185,7 @@ class Metrics:
     def push(self) -> str:
         # Note :: Raw Loss is an Average over Gradient Accumulation Steps --> No Smoothing!
         loss_raw = torch.stack(list(self.state["loss_raw"])).mean().item()
+        moe_loss_raw = torch.stack(list(self.state["loss_moe_raw"])).mean().item()
         loss = torch.stack(list(self.state["loss"])).mean().item()
         step_time, lr = np.mean(list(self.state["step_time"])), self.state["lr"][-1]
         status = self.get_status(loss)
@@ -195,6 +200,7 @@ class Metrics:
                 f"{prefix}/Loss (Raw)": loss_raw,
                 f"{prefix}/Learning Rate": lr,
                 f"{prefix}/Step Time": step_time,
+                f"{prefix}/Moe Loss (Raw)":moe_loss_raw,
             },
         )
         return status

@@ -27,6 +27,9 @@ from prismatic.util.data_utils import PaddedCollatorForLanguageModeling
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
+from datetime import datetime
+def get_time():
+    return datetime.now().strftime('%H:%M:%S')
 
 # === Abstract Base Class for an arbitrary Training Strategy ===
 class TrainingStrategy(ABC):
@@ -150,6 +153,7 @@ class TrainingStrategy(ABC):
             # Just set `epochs` to some large number --> we'll short-circuit based on steps anyway
             self.epochs = 100
 
+
         # === Train ===
         status = metrics.get_status()
         with tqdm(
@@ -172,6 +176,7 @@ class TrainingStrategy(ABC):
                 # Note that we'll unpack batch (and let AMP/FSDP do its thing) in the VLM.forward() call
                 #   => Basically, if we're using mixed precision (or not), autocast()/FSDP will move to device!
                 for train_idx, batch in enumerate(dataloader):
+                    
                     # [Contract] self.vlm.forward() must automatically compute `loss` and return!
                     with torch.autocast(
                         "cuda",
@@ -182,6 +187,7 @@ class TrainingStrategy(ABC):
                         if "query_ids" in batch:
                             moe_kwargs["query_ids"] = batch['query_ids']
                             moe_kwargs["query_attention_mask"] = batch['query_attention_mask']
+                            
                         output: CausalLMOutputWithPast = self.vlm(
                             input_ids=batch["input_ids"],
                             attention_mask=batch["attention_mask"],
@@ -190,11 +196,18 @@ class TrainingStrategy(ABC):
                             multimodal_indices=batch["multimodal_indices"],
                             **moe_kwargs,
                         )
-                        loss = output.loss
+                        if isinstance(output,tuple):
+                            lb_alpha = output[1]
+                            moe_loss = output[2]
+                            output = output[0]
+                            loss = output.loss + lb_alpha * moe_loss
+                            metrics.commit(loss_moe_raw = moe_loss)
+                        else:
+                            loss = output.loss
 
                     # Commit Loss (Prior to Gradient Accumulation Normalization)
                     metrics.commit(loss=loss)
-
+                    # overwatch.info(f"{metrics.state} {metrics.global_step=}")
                     # Normalize Loss to account for Gradient Accumulation --> Backward!
                     # [IMPORTANT] Technically speaking, doing gradient accumulation in this way is "incorrect"; this is
                     #             because in general, each batch has a *different number of masked out tokens* (because
@@ -208,20 +221,25 @@ class TrainingStrategy(ABC):
                     #   just really tanks in precision... and don't have a good/clean way to fix this. Would love for
                     #   someone to PR and fix this (and I'd greatly appreciate it!!!)
                     normalized_loss = loss / self.grad_accumulation_steps
+                    
                     normalized_loss.backward()
+                    
 
+                    # for name, param in self.vlm.named_parameters():
+                    #     if param.grad is None:
+                    #         if "projector" in name:
+                    #             overwatch.info(name)
                     # Step =>> Only if Done w/ Gradient Accumulation
                     if (train_idx + 1) % self.grad_accumulation_steps == 0:
                         metrics.commit(update_step_time=True)
 
                         # Clip Gradients --> this is custom, per-strategy because of DDP vs. FSDP locality-assumptions
                         self.clip_grad_norm()
-
                         # Optimizer & LR Scheduler Step
                         self.optimizer.step()
                         self.lr_scheduler.step()
                         self.optimizer.zero_grad()
-
+                        
                         # Push Metrics
                         metrics.commit(global_step=metrics.global_step + 1, lr=self.lr_scheduler.get_last_lr()[0])
                         status = metrics.push()
@@ -236,6 +254,7 @@ class TrainingStrategy(ABC):
                         # Update Progress Bar
                         progress.update()
                         progress.set_description(status)
+
 
             # Save checkpoint at end each epoch (if `self.max_steps` is None)
             if self.max_steps is None:

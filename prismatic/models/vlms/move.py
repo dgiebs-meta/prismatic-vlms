@@ -35,6 +35,10 @@ overwatch = initialize_overwatch(__name__)
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
 
+from datetime import datetime
+def get_time():
+    return datetime.now().strftime('%H:%M:%S')
+
 class AddAuxiliaryLoss(torch.autograd.Function):
     """
     The trick function of adding auxiliary (aux) loss, 
@@ -306,6 +310,7 @@ class MoveVLM(VLM):
     ) -> CausalLMOutputWithPast:
         """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         # Handle Inference (leverage cache, short-circuit on just LLM forward)
+        
         if input_ids.shape[1] == 1 and past_key_values is not None:
             # We're leveraging the cache, so just redirect to `self.llm_backbone` with `input_ids` and `past_key_values`
             output = self.llm_backbone(
@@ -330,7 +335,9 @@ class MoveVLM(VLM):
             multimodal_indices = torch.arange(len(input_ids), dtype=torch.long, device=input_ids.device)
 
         # Handle Multimodal Indices is Empty (len == 0) --> simple unimodal forward
+        
         elif len(multimodal_indices) == 0:
+            
             return self.llm_backbone(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -350,12 +357,10 @@ class MoveVLM(VLM):
             pixel_values = pixel_values[multimodal_indices]
 
         query_embed = self.get_query_embed(query_ids,query_attention_mask)
-
         projected_patch_embeddings,router_logits,load_balance_loss = self.mixture_of_visual_experts(
             query_embed = query_embed,
             pixel_values  = pixel_values
         )
-
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -449,6 +454,7 @@ class MoveVLM(VLM):
             fused_attention_mask = torch.vstack([multimodal_attention_mask, unimodal_attention_mask])
             fused_labels = torch.vstack([multimodal_labels, unimodal_labels])
 
+
         # Run LLM Forward --> returns CausalLMOutputWithPast!
         llm_output =  self.llm_backbone(
             input_ids=None,
@@ -462,11 +468,10 @@ class MoveVLM(VLM):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-
-        if load_balance_loss is not None:
-            llm_output.loss += self.lb_alpha * load_balance_loss
-    
-        return llm_output
+        if load_balance_loss is None:
+            return llm_output
+        else:
+            return llm_output, self.lb_alpha, load_balance_loss        
     
     def get_query_embed(self,input_ids,attention_mask):
         """
@@ -475,7 +480,7 @@ class MoveVLM(VLM):
         if self.query_embed_type == 'avg_token_embedding':
             query_embed = self.llm_backbone.embed_input_ids(input_ids)
             query_embed = query_embed * attention_mask.unsqueeze(-1).float()
-            query_embed = query_embed.sum(dim=1) / attention_mask.sum(dim=1,keep_dim=True)
+            query_embed = query_embed.sum(dim=1) / attention_mask.sum(dim=1,keepdim=True)
             return query_embed
 
         elif self.query_embed_type.startswith("llm_layer"):
@@ -535,6 +540,7 @@ class MoveVLM(VLM):
         routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         routing_weights = routing_weights.to(query_embed.dtype) ## [batch_size,top_k]
 
+
         # 3. define final states (to be filled up)
         final_visual_features = None
 
@@ -542,31 +548,30 @@ class MoveVLM(VLM):
         expert_mask = F.one_hot(selected_experts,num_classes=self.num_experts).permute(2,1,0)
 
         ## for-loop over experts
-        for idx,vision_expert in enumerate(self.vision_backbone):
-
+        for idx in range(self.num_experts):
+            vision_expert = self.vision_backbone[idx]
             projector = self.projector[idx]
             top_idx,batch_idx = torch.where(expert_mask[idx])
 
-            if len(top_idx)>0:
-                current_pixel_values = pixel_values[vision_expert.identifier][batch_idx]
+            # if len(top_idx)>0: !! SUPER IMPORTANT TO NOT INCLUDE THIS LINE
+            current_pixel_values = pixel_values[vision_expert.identifier][batch_idx]
 
-                with torch.set_grad_enabled(self.vision_backbone_requires_grad):
-                    ## [_bsz, num_patches, vision_embed_dim]
-                    visual_feature = vision_expert(current_pixel_values)
+            with torch.set_grad_enabled(self.vision_backbone_requires_grad):
+                ## [_bsz, num_patches, vision_embed_dim]
+                visual_feature = vision_expert(current_pixel_values)
 
-                ## [_bsz,num_patches,llm_embed_dim]
-                overwatch.info(f"{visual_feature.shape=},{_routing_weights=}")
-                visual_feature = projector(visual_feature) * routing_weights[batch_idx,top_idx,None,None]
-                
-                if final_visual_features is None:
-                    _,num_patches,_ = visual_feature.shape
-                    final_visual_features = torch.zeros(
-                        (batch_size, num_patches, self.llm_backbone.embed_dim),
-                        dtype=query_embed.dtype, device=query_embed.device
-                    )
+            ## [_bsz,num_patches,llm_embed_dim]
+            visual_feature = projector(visual_feature) * routing_weights[batch_idx,top_idx,None,None]
+            
+            if final_visual_features is None:
+                _,num_patches,_ = visual_feature.shape
+                final_visual_features = torch.zeros(
+                    (batch_size, num_patches, self.llm_backbone.embed_dim),
+                    dtype=query_embed.dtype, device=query_embed.device
+                )
 
-                final_visual_features.index_add_(0,batch_idx,visual_feature.to(query_embed.dtype))
-        
+            final_visual_features.index_add_(0,batch_idx,visual_feature.to(query_embed.dtype))
+
         return final_visual_features,router_logits,aux_loss
 
     # === GenerationMixin Methods ===

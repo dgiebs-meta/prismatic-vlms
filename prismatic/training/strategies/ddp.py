@@ -77,7 +77,11 @@ class DDPStrategy(TrainingStrategy):
         #            is the same size/dtype as the model parameters; this will *double* GPU memory!
         # - stackoverflow.com/questions/68949954/model-takes-twice-the-memory-footprint-with-distributed-data-parallel
         overwatch.info("Wrapping VLM with Distributed Data Parallel", ctx_level=1)
-        self.vlm = DDP(self.vlm, device_ids=[self.device_id], gradient_as_bucket_view=True)
+        self.vlm = DDP( 
+            self.vlm, device_ids=[self.device_id],
+            gradient_as_bucket_view=True,
+            # find_unused_parameters=True
+        )
 
         # Create Optimizer and LR Scheduler =>> note that most of the LR Schedulers we use require `max_steps/epochs`
         #   => Optimizer should only operate on parameters that are *unfrozen* / trainable!
