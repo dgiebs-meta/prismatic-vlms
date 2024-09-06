@@ -4,6 +4,7 @@ fsdp.py
 Core class definition for a strategy implementing Torch native Fully Sharded Data Parallel Training (with support for
 fine-grained control over wrapping policies and mixed precision per component).
 """
+
 import math
 import shutil
 from collections import OrderedDict
@@ -80,7 +81,7 @@ class FSDPStrategy(TrainingStrategy):
 
         # FSDP-Specific Parameters
         if sharding_strategy == "shard-grad-op":
-            self.fsdp_sharding_strategy = ShardingStrategy.SHARD_GRAD_OP
+            self.fsdp_sharding_strategy = ShardingStrategy._HYBRID_SHARD_ZERO2
         elif sharding_strategy == "full-shard":
             self.fsdp_sharding_strategy = ShardingStrategy.FULL_SHARD
         elif sharding_strategy == 'fsdp-no-shard':

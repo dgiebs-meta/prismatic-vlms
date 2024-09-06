@@ -5,7 +5,7 @@ Class definition for all LLMs derived from LlamaForCausalLM.
 """
 from typing import Optional, Type, List, Tuple, Union
 from transformers.modeling_outputs import BaseModelOutputWithPast
-from transformers.cache_utils import Cache,StaticCache,DynamicCache
+from transformers.cache_utils import StaticCache,DynamicCache
 import torch
 from torch import nn as nn
 from transformers import LlamaForCausalLM

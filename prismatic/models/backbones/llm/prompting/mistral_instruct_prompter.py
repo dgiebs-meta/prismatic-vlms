@@ -1,39 +1,26 @@
 """
-base_prompter.py
+mistral_instruct_prompter.py
 
-Abstract class definition of a multi-turn prompt builder for ensuring consistent formatting for chat-based LLMs.
+Defines a PromptBuilder for building Mistral Instruct Chat Prompts --> recommended pattern used by HF / tutorials.
+
+Reference: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1#instruction-format
 """
 
-from abc import ABC, abstractmethod
 from typing import Optional
 
-
-class PromptBuilder(ABC):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
-        self.model_family = model_family
-
-        # Only some models define a system prompt => let subclasses handle this logic!
-        self.system_prompt = system_prompt
-
-    @abstractmethod
-    def add_turn(self, role: str, message: str) -> str: ...
-
-    @abstractmethod
-    def get_potential_prompt(self, user_msg: str) -> None: ...
-
-    @abstractmethod
-    def get_prompt(self) -> str: ...
+from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
 
 
-class PurePromptBuilder(PromptBuilder):
+class MistralInstructPromptBuilder(PromptBuilder):
     def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
 
-        # TODO (siddk) =>> Can't always assume LlamaTokenizer --> FIX ME!
+        # Note =>> Mistral Tokenizer is an instance of `LlamaTokenizer(Fast)`
+        #      =>> Mistral Instruct *does not* use a System Prompt
         self.bos, self.eos = "<s>", "</s>"
 
         # Get role-specific "wrap" functions
-        self.wrap_human = lambda msg: f"In: {msg}\nOut: "
+        self.wrap_human = lambda msg: f"[INST] {msg} [/INST] "
         self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.eos}"
 
         # === `self.prompt` gets built up over multiple turns ===
@@ -69,5 +56,5 @@ class PurePromptBuilder(PromptBuilder):
         return prompt_copy.removeprefix(self.bos).rstrip()
 
     def get_prompt(self) -> str:
-        # Remove prefix <bos> (if exists) because it gets auto-inserted by tokenizer!
+        # Remove prefix <bos> because it gets auto-inserted by tokenizer!
         return self.prompt.removeprefix(self.bos).rstrip()

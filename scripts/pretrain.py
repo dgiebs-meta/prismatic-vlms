@@ -20,6 +20,7 @@ Run with:
     - [Single Node Multi-GPU (= $K)]: torchrun --standalone --nnodes 1 --nproc-per-node $K scripts/pretrain.py
     - [Multi-Node/AWS Sagemaker] Depends on your individual setup; file an issue if you have trouble!
 """
+
 import json
 import os
 from dataclasses import dataclass, field
@@ -121,7 +122,7 @@ def pretrain(cfg: PretrainConfig) -> None:
     overwatch.info("Prismatic VLM Training :: Gathering Light")
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
-    torch.cuda.set_device(device_id := (overwatch.rank() % torch.cuda.device_count()))
+    torch.cuda.set_device(device_id := (overwatch.local_rank()))
     torch.cuda.empty_cache()
 
     # Create Unique Run Name & Save Directory
@@ -164,12 +165,12 @@ def pretrain(cfg: PretrainConfig) -> None:
         vision_backbone,
         llm_backbone,
         enable_mixed_precision_training=cfg.model.enable_mixed_precision_training,
-        enable_moe=cfg.model.enable_moe,
-        num_experts=cfg.model.num_experts,
-        topk_experts=cfg.model.topk_experts,
-        jitter_noise=cfg.model.jitter_noise,
-        lb_alpha=cfg.model.lb_alpha,
-        query_embed_type=cfg.model.query_embed_type,
+        # enable_moe=cfg.model.enable_moe,
+        # num_experts=cfg.model.num_experts,
+        # topk_experts=cfg.model.topk_experts,
+        # jitter_noise=cfg.model.jitter_noise,
+        # lb_alpha=cfg.model.lb_alpha,
+        # query_embed_type=cfg.model.query_embed_type,
     )
 
     # [Explicit] Call to `freeze_backbones` here for clarity => will log exactly what is frozen / what's not!

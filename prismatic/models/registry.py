@@ -4,7 +4,6 @@ registry.py
 Exhaustive list of pretrained VLMs (with full descriptions / links to corresponding names and sections of paper).
 """
 
-
 # === Pretrained Model Registry ===
 # fmt: off
 MODEL_REGISTRY = {
@@ -588,6 +587,117 @@ MODEL_REGISTRY = {
             "datasets": ["LLaVa v1.5 Instruct", "LVIS-Instruct-4V", "LRV-Instruct"],
             "train_epochs": 2,
         },
+    },
+
+    # === DINOSigLIP 224px Prism Models ===
+    "prism-dinosiglip-224px-controlled+7b": {
+        "model_id": "prism-dinosiglip-224px-controlled+7b",
+        "names": ["Prism-DINOSigLIP 224px 7B (Controlled)"],
+        "description": {
+            "name": "DINOSigLIP 224px 7B (Controlled)",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "DINOv2 ViT-L/14 + SigLIP ViT-SO 14 @ 224px",
+            "image_processing": "Naive Resize",
+            "language_model": "Llama-2 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "prism-dinosiglip-224px+7b": {
+        "model_id": "prism-dinosiglip-224px+7b",
+        "names": ["Prism-DINOSigLIP 224px 7B"],
+        "description": {
+            "name": "DINOSigLIP 224px 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "DINOv2 ViT-L/14 + SigLIP ViT-SO 14 @ 224px",
+            "image_processing": "Naive Resize",
+            "language_model": "Llama-2 7B",
+            "datasets": ["LLaVa v1.5 Instruct", "LVIS-Instruct-4V", "LRV-Instruct"],
+            "train_epochs": 2,
+        }
+    },
+    
+    "prism-dinosiglip-llama3-224px+8b": {
+        "model_id": "prism-dinosiglip-llama3-224px+8b",
+        "names": ["Prism-DINOSigLIP Llama3 224px 8B"],
+        "description": {
+            "name": "DINOSigLIP Llama3 224px 8B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "DINOv2 ViT-L/14 + SigLIP ViT-SO 14 @ 224px",
+            "image_processing": "Naive Resize",
+            "language_model": "Llama-3 8B",
+            "datasets": ["LLaVa v1.5 Instruct", "LVIS-Instruct-4V", "LRV-Instruct"],
+            "train_epochs": 2,
+        }
+    },
+
+    # === Additional LLM Backbones ===
+    "llama2-chat+7b": {
+        "model_id": "llama2-chat+7b",
+        "names": ["Llama-2 Chat 7B"],
+        "description": {
+            "name": "Llama-2 Chat 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Llama-2 Chat 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "llama2-chat+13b": {
+        "model_id": "llama2-chat+13b",
+        "names": ["Llama-2 Chat 13B"],
+        "description": {
+            "name": "Llama-2 Chat 13B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Llama-2 Chat 13B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+
+    "mistral-v0.1+7b": {
+        "model_id": "mistral-v0.1+7b",
+        "names": ["Mistral v0.1 7B"],
+        "description": {
+            "name": "Mistral v0.1 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Mistral v0.1 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "mistral-instruct-v0.1+7b": {
+        "model_id": "mistral-instruct-v0.1+7b",
+        "names": ["Mistral Instruct v0.1 7B"],
+        "description": {
+            "name": "Mistral Instruct v0.1 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Mistral Instruct v0.1 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+
+    "phi-2+3b": {
+        "model_id": "phi-2+3b",
+        "names": ["Phi-2 3B"],
+        "description": {
+            "name": "Phi-2 3B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Phi-2 3B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
     },
 }
 

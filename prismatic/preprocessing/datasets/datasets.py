@@ -8,6 +8,7 @@ formatting (e.g., SYS_PROMPT + USER: ... ASSISTANT: ... for Vicuña v1.5 Chat mo
 We currently only support Map-style Datasets; assumes that all files (annotations, images) are on local disk, and that
 random access image reading is relatively cheap/fast.
 """
+
 import copy
 import json
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Dict, List, Tuple, Type
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from transformers import LlamaTokenizerFast, PreTrainedTokenizerBase
+from transformers import CodeGenTokenizerFast, LlamaTokenizerFast, PreTrainedTokenizerBase
 
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import ImageTransform
@@ -51,7 +52,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         the "prompt" from the human, and instead directly predict the caption from the image.
 
         As a concrete example given the "raw data" for the first example:
-            example = self.examples[0]["conversations]` = {
+            example = self.examples[0]["conversations"]` = {
                 [
                     {"from": "human", "value": "Render a clear and concise summary of the photo.\n<image>"},
                     {"from": "gpt", "value": "select luxury furniture 3 - inch gel memory foam mattress topper"}
@@ -140,11 +141,16 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             # Get "effective" string added to prompt --> handle whitespace for tokenizer type!
             msg = prompt_builder.add_turn(turn["from"], turn["value"])
 
-            # # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
-            # if isinstance(self.tokenizer, LlamaTokenizerFast):
-            msg = msg.rstrip()
-            # else:
-            #     raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
+            # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
+            if isinstance(self.tokenizer, LlamaTokenizerFast):
+                msg = msg.rstrip()
+
+            # Phi-2 Tokenizer == CodeGenTokenizer (Fast) -- no special handling!
+            elif isinstance(self.tokenizer, CodeGenTokenizerFast):
+                pass
+
+            else:
+                raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
 
             # Tokenize Input IDs
             turn_input_ids = self.tokenizer(msg, add_special_tokens=turn_idx == 0).input_ids

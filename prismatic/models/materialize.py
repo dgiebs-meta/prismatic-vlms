@@ -4,11 +4,12 @@ materialize.py
 Factory class for initializing Vision Backbones, LLM Backbones, and VLMs from a set registry; provides and exports
 individual functions for clear control flow.
 """
+
 from typing import Optional, Tuple
 
 from transformers import PreTrainedTokenizerBase
 
-from prismatic.models.backbones.llm import LLaMa2LLMBackbone, LLMBackbone, LLaMa3LLMBackbone
+from prismatic.models.backbones.llm import LLaMa2LLMBackbone, LLMBackbone, LLaMa3LLMBackbone, MistralLLMBackbone, PhiLLMBackbone
 from prismatic.models.backbones.vision import (
     CLIPViTBackbone,
     DinoCLIPViTBackbone,
@@ -29,10 +30,11 @@ from prismatic.models.vlms import PrismaticVLM,MoveVLM
 VISION_BACKBONES = {
     # === 224px Backbones ===
     "clip-vit-l": {"cls": CLIPViTBackbone, "kwargs": {"default_image_size": 224}},
-    "siglip-vit-so400m": {"cls": SigLIPViTBackbone, "kwargs": {"default_image_size": 224}}, # patch 14
-    "dinov2-vit-l": {"cls": DinoV2ViTBackbone, "kwargs": {"default_image_size": 224}}, # patch 14
-    "in1k-vit-l": {"cls": IN1KViTBackbone, "kwargs": {"default_image_size": 224}}, # patch: 16
+    "siglip-vit-so400m": {"cls": SigLIPViTBackbone, "kwargs": {"default_image_size": 224}},
+    "dinov2-vit-l": {"cls": DinoV2ViTBackbone, "kwargs": {"default_image_size": 224}},
+    "in1k-vit-l": {"cls": IN1KViTBackbone, "kwargs": {"default_image_size": 224}},
     "deit3-huge":{"cls": DeitBackbone, "kwargs":{"default_image_size":224}},
+    "dinosiglip-vit-so-224px": {"cls": DinoSigLIPViTBackbone, "kwargs": {"default_image_size": 224}},
 
     # === Assorted CLIP Backbones ===
     "clip-vit-b": {"cls": CLIPViTBackbone, "kwargs": {"default_image_size": 224}},
@@ -66,6 +68,13 @@ LLM_BACKBONES = {
 
     # === LlaMa-3 Pure Backbone ===
     "llama3-8b-pure": {"cls": LLaMa3LLMBackbone, "kwargs": {}},
+    
+    # === Mistral v0.1 Backbones ===
+    "mistral-v0.1-7b-pure": {"cls": MistralLLMBackbone, "kwargs": {}},
+    "mistral-v0.1-7b-instruct": {"cls": MistralLLMBackbone, "kwargs": {}},
+
+    # === Phi-2 Backbone ===
+    "phi-2-3b": {"cls": PhiLLMBackbone, "kwargs": {}},
 }
 
 # fmt: on

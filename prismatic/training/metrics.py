@@ -4,6 +4,7 @@ metrics.py
 Utility classes defining a Metrics container and multiple Trackers to enable model/stage-specific logging to various
 endpoints (e.g., JSONL local logs, Weights & Biases).
 """
+
 import time
 from collections import deque
 from pathlib import Path
@@ -37,12 +38,12 @@ class JSONLinesTracker:
     def __init__(self, run_id: str, run_dir: Path, hparams: Dict[str, Any]) -> None:
         self.run_id, self.run_dir, self.hparams = run_id, run_dir, hparams
 
-    @overwatch.rank_zero_only()
+    @overwatch.rank_zero_only
     def write_hyperparameters(self) -> None:
         with jsonlines.open(self.run_dir / "run-metrics.jsonl", mode="w", sort_keys=True) as js_tracker:
             js_tracker.write({"run_id": self.run_id, "hparams": self.hparams})
 
-    @overwatch.rank_zero_only()
+    @overwatch.rank_zero_only
     def write(self, _: int, metrics: Dict[str, Union[int, float]]) -> None:
         with jsonlines.open(self.run_dir / f"{self.run_id}.jsonl", mode="a", sort_keys=True) as js_tracker:
             js_tracker.write(metrics)
@@ -69,7 +70,7 @@ class WeightsBiasesTracker:
         # Call W&B.init()
         self.initialize()
 
-    @overwatch.rank_zero_only()
+    @overwatch.rank_zero_only
     def initialize(self) -> None:
         wandb.init(
             name=self.run_id,
@@ -80,11 +81,11 @@ class WeightsBiasesTracker:
             group=self.group,
         )
 
-    @overwatch.rank_zero_only()
+    @overwatch.rank_zero_only
     def write_hyperparameters(self) -> None:
         wandb.config = self.hparams
 
-    @overwatch.rank_zero_only()
+    @overwatch.rank_zero_only
     def write(self, global_step: int, metrics: Dict[str, Union[int, float]]) -> None:
         wandb.log(metrics, step=global_step)
 
@@ -181,7 +182,7 @@ class Metrics:
             else:
                 self.state[key].append(value.detach())
 
-    @overwatch.rank_zero_only()
+    @overwatch.rank_zero_only
     def push(self) -> str:
         # Note :: Raw Loss is an Average over Gradient Accumulation Steps --> No Smoothing!
         loss_raw = torch.stack(list(self.state["loss_raw"])).mean().item()
