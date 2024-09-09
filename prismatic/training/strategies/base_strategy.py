@@ -83,6 +83,7 @@ class TrainingStrategy(ABC):
         assert (
             self.global_batch_size % self.per_device_batch_size == 0
         ), "Per-device batch size must evenly divide global batch size!"
+        print("ADD INFO", self.global_batch_size, self.per_device_batch_size, overwatch.world_size())
         self.grad_accumulation_steps = self.global_batch_size // self.per_device_batch_size // overwatch.world_size()
         if self.enable_mixed_precision_training:
             assert self.mixed_precision_dtype == torch.bfloat16, "Only BF16 mixed precision training is supported!"
@@ -149,6 +150,7 @@ class TrainingStrategy(ABC):
         )
 
         # Max Steps vs. Epochs Computation
+        print("ACCUMULATION STEPS", self.grad_accumulation_steps)
         steps_per_epoch = len(dataloader) // self.grad_accumulation_steps
         if self.max_steps is not None and steps_per_epoch < self.max_steps:
             # Just set `epochs` to some large number --> we'll short-circuit based on steps anyway
