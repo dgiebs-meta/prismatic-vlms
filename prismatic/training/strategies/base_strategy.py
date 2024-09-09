@@ -199,14 +199,14 @@ class TrainingStrategy(ABC):
                             multimodal_indices=batch["multimodal_indices"],
                             # **moe_kwargs,
                         )
-                        if isinstance(output,tuple):
-                            lb_alpha = output[1]
-                            moe_loss = output[2]
-                            output = output[0]
-                            loss = output.loss + lb_alpha * moe_loss
-                            metrics.commit(loss_moe_raw = moe_loss)
-                        else:
-                            loss = output.loss
+                        # if isinstance(output,tuple):
+                        #     lb_alpha = output[1]
+                        #     moe_loss = output[2]
+                        #     output = output[0]
+                        #     loss = output.loss + lb_alpha * moe_loss
+                        #     metrics.commit(loss_moe_raw = moe_loss)
+                        # else:
+                        loss = output.loss
 
                     # Commit Loss (Prior to Gradient Accumulation Normalization)
                     metrics.commit(loss=loss)

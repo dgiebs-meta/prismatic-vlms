@@ -186,7 +186,7 @@ class Metrics:
     def push(self) -> str:
         # Note :: Raw Loss is an Average over Gradient Accumulation Steps --> No Smoothing!
         loss_raw = torch.stack(list(self.state["loss_raw"])).mean().item()
-        moe_loss_raw = torch.stack(list(self.state["loss_moe_raw"])).mean().item()
+        # moe_loss_raw = torch.stack(list(self.state["loss_moe_raw"])).mean().item()
         loss = torch.stack(list(self.state["loss"])).mean().item()
         step_time, lr = np.mean(list(self.state["step_time"])), self.state["lr"][-1]
         status = self.get_status(loss)
@@ -201,7 +201,7 @@ class Metrics:
                 f"{prefix}/Loss (Raw)": loss_raw,
                 f"{prefix}/Learning Rate": lr,
                 f"{prefix}/Step Time": step_time,
-                f"{prefix}/Moe Loss (Raw)":moe_loss_raw,
+                # f"{prefix}/Moe Loss (Raw)":moe_loss_raw,
             },
         )
         return status
