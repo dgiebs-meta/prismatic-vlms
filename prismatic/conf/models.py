@@ -87,7 +87,7 @@ class LLaVa_v15_Reproduction_7B(ModelConfig):
     # Align Stage Optimization Parameters
     align_epochs: int = 1
     align_max_steps: Optional[int] = None
-    align_global_batch_size: int = 256
+    align_global_batch_size: int = 256 * 4
     align_per_device_batch_size: int = 16
 
     align_learning_rate: float = 1e-3
